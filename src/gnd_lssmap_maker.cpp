@@ -16,6 +16,7 @@
 #include "sensor_msgs/PointCloud.h"
 #include "gnd_geometry2d_msgs/msg_pose2d_stamped.h"
 #include "gnd/gnd_rosmsg_reader.hpp"
+#include "gnd/gnd_rosutil.hpp"
 
 #include <stdio.h>
 #include <float.h>
@@ -193,7 +194,6 @@ int main(int argc, char **argv) {
 	// ---> operate
 	if ( ros::ok() ) {
 		ros::Rate loop_rate(1000);
-		ros::AsyncSpinner spinner(2);
 
 		msg_pose_t msg_pose_prevcollect;
 
@@ -201,10 +201,12 @@ int main(int argc, char **argv) {
 		double time_start;
 		double time_display;
 		double time_collect;
-		const double cycle_display = 1.0;
 
-		int seq_pose_atcollect = 0;
-		int seq_pointcloud_atcollect = 0;
+		uint32_t seq_pointcloud_associated = 0;
+		uint32_t seq_pose_at_map_update = 0;
+		double time_pose_at_map_update = 0;
+		int seq_pointcloud_at_map_update = 0;
+		double time_pointcloud_at_map_update = 0;
 		int cnt_collect = 0;
 
 		int nline_show = 0;
@@ -224,24 +226,36 @@ int main(int argc, char **argv) {
 		} // ---> previous pose
 
 		// ---> main loop
-		spinner.start();
 		while( ros::ok() ) {
 			// blocking
 			loop_rate.sleep();
+			ros::spinOnce();
 
 			// time
 			time_current = ros::Time::now().toSec();
 
-			// ---> coordinate transform and publish
-			if( msgreader_pose.copy_new( &msg_pose, msg_pose.header.stamp.toSec() ) == 0) {
+			// ---> read new pointcloud data
+			if( !gnd::rosutil::is_sequence_updated(seq_pointcloud_associated, msg_pointcloud.header.seq)	// point-cloud data had already been updated
+				&& msgreader_pointcloud.is_updated(msg_pointcloud.header.seq) ){							// no new data
+				msgreader_pointcloud.copy_next(&msg_pointcloud, msg_pointcloud.header.seq);
+			} // <--- read new pointcloud data
+
+			// ---> data collection
+			if( gnd::rosutil::is_sequence_updated(seq_pointcloud_associated, msg_pointcloud.header.seq)		// point-cloud data had not been updated
+				&& msgreader_pose.is_updated( &msg_pointcloud.header.stamp ) ) {							// pose data is delay and it's not able to associate on time-stamp
 				bool flg_collect = false;
 
-				{ // ---> check data collect condition
+				// ---> associate point-cloud with pose and check data collect condition
+				if( msgreader_pointcloud.nlatest() < 2 ) {
+					// exception: few data
+				}
+				else if( msgreader_pose.copy_at_time( &msg_pose, msg_pointcloud.header.stamp.toSec() ) == 0 ) { // get point cloud data
 					double time = msg_pose.header.stamp.toSec() - msg_pose_prevcollect.header.stamp.toSec();
 					double sqdist = (msg_pose.x - msg_pose_prevcollect.x) * (msg_pose.x - msg_pose_prevcollect.x)
-											+ (msg_pose.y - msg_pose_prevcollect.y) * (msg_pose.y - msg_pose_prevcollect.y);
+																			+ (msg_pose.y - msg_pose_prevcollect.y) * (msg_pose.y - msg_pose_prevcollect.y);
 					double angle = fabs( gnd_rad_normalize( msg_pose.theta - msg_pose_prevcollect.theta ) );
 
+					// check data collect condition
 					flg_collect = flg_collect
 							|| (  node_config.collect_condition_time.value > 0
 									&& time >= node_config.collect_condition_time.value);
@@ -251,90 +265,96 @@ int main(int argc, char **argv) {
 					flg_collect = flg_collect
 							|| (  node_config.collect_condition_moving_angle.value > 0
 									&& angle > node_config.collect_condition_moving_angle.value);
-				} // <--- check data collect condition
 
-				// ---> data collect
+					// update sequence id of latest associated data
+					seq_pointcloud_associated = msg_pointcloud.header.seq;
+				}
+				// <--- associate point-cloud with pose and check data collect condition
+
+				// ---> coordinate transform and counting
 				if( flg_collect ) { // in meeting condition case
 
-					// ---> coordinate transform and counting
-					if( msgreader_pointcloud.copy_at_time( &msg_pointcloud, msg_pose.header.stamp.toSec()) == 0 ) { // get point cloud data
-						int i;
-						gnd::matrix::fixed<4,4> mat_coordtf;
-						double x_src_prev, y_src_prev;
+					int i;
+					gnd::matrix::fixed<4,4> mat_coordtf;
+					double x_src_prev, y_src_prev;
 
-						{ // ---> initialize previous counted point
-							x_src_prev = 10000;
-							y_src_prev = 10000;
-						} // ---> initialize previous counted point
+					{ // ---> initialize previous counted point
+						x_src_prev = 10000;
+						y_src_prev = 10000;
+					} // ---> initialize previous counted point
 
-						// calculate coordinate transform matrix
-						gnd::matrix::coordinate_converter(&mat_coordtf,
-								msg_pose.x, msg_pose.y, 0,
-								cos(msg_pose.theta), sin(msg_pose.theta), 0,
-								0, 0, 1.0);
+					// calculate coordinate transform matrix
+					gnd::matrix::coordinate_converter(&mat_coordtf,
+							msg_pose.x, msg_pose.y, 0,
+							cos(msg_pose.theta), sin(msg_pose.theta), 0,
+							0, 0, 1.0);
 
-						// ---> scanning loop (point cloud data)
-						for( i = 0; i < (int)msg_pointcloud.points.size(); i++ ) {
-							double sq_dist;
-							gnd::vector::fixed_column<4> point_src, point_dest;
+					// ---> scanning loop (point cloud data)
+					for( i = 0; i < (int)msg_pointcloud.points.size(); i++ ) {
+						double sq_dist;
+						gnd::vector::fixed_column<4> point_src, point_dest;
 
-							{ // ---> ignore
-								sq_dist = ( msg_pointcloud.points[i].x) * ( msg_pointcloud.points[i].x)
-													+ ( msg_pointcloud.points[i].y ) * ( msg_pointcloud.points[i].y );
-								if( node_config.collect_condition_ignore_range_lower.value >= 0 &&
+						{ // ---> ignore
+							sq_dist = ( msg_pointcloud.points[i].x) * ( msg_pointcloud.points[i].x)
+																					+ ( msg_pointcloud.points[i].y ) * ( msg_pointcloud.points[i].y );
+							if( node_config.collect_condition_ignore_range_lower.value >= 0 &&
 									sq_dist < node_config.collect_condition_ignore_range_lower.value * node_config.collect_condition_ignore_range_lower.value) {
-									continue;
-								}
-								if( node_config.collect_condition_ignore_range_upper.value >= 0 &&
+								continue;
+							}
+							if( node_config.collect_condition_ignore_range_upper.value >= 0 &&
 									sq_dist > node_config.collect_condition_ignore_range_upper.value * node_config.collect_condition_ignore_range_upper.value) {
-									continue;
-								}
-
-							} // <--- ignore
-
-							{ // ---> culling
-								sq_dist = ( msg_pointcloud.points[i].x - x_src_prev ) * ( msg_pointcloud.points[i].x - x_src_prev )
-													+ ( msg_pointcloud.points[i].y - y_src_prev ) * ( msg_pointcloud.points[i].y - y_src_prev );
-
-								if( sq_dist < node_config.collect_condition_culling_distance.value * node_config.collect_condition_culling_distance.value ) {
-									continue;
-								}
-
-								x_src_prev = msg_pointcloud.points[i].x;
-								y_src_prev = msg_pointcloud.points[i].y;
-							} // <--- culling
-
-							{ // ---> coordinate transform
-								point_src[0] = msg_pointcloud.points[i].x;
-								point_src[1] = msg_pointcloud.points[i].y;
-								point_src[2] = msg_pointcloud.points[i].z;
-								point_src[3] = 1;
-
-								gnd::matrix::prod( &mat_coordtf, &point_src, &point_dest );
-							} // <--- coordinate transform
-
-							// counting
-							gnd::lssmap::counting_map(&lssmap_counting, point_dest[0], point_dest[1]);
-
-							if( fp_txtlog ) {
-								fprintf( fp_txtlog, "%lf %lf\n", point_dest[0], point_dest[1] );
+								continue;
 							}
 
-						} // <--- scanning loop (point cloud data)
+						} // <--- ignore
 
-						msg_pose_prevcollect = msg_pose;
+						{ // ---> culling
+							sq_dist = ( msg_pointcloud.points[i].x - x_src_prev ) * ( msg_pointcloud.points[i].x - x_src_prev )
+																					+ ( msg_pointcloud.points[i].y - y_src_prev ) * ( msg_pointcloud.points[i].y - y_src_prev );
 
-						seq_pose_atcollect = msg_pose.header.seq;
-						seq_pointcloud_atcollect = msg_pointcloud.header.seq;
-						cnt_collect++;
-					} // <--- coordinate transform and counting
+							if( sq_dist < node_config.collect_condition_culling_distance.value * node_config.collect_condition_culling_distance.value ) {
+								continue;
+							}
 
-				} // <--- data collect
+							x_src_prev = msg_pointcloud.points[i].x;
+							y_src_prev = msg_pointcloud.points[i].y;
+						} // <--- culling
 
-			} // ---> coordinate transform and publish
+						{ // ---> coordinate transform
+							point_src[0] = msg_pointcloud.points[i].x;
+							point_src[1] = msg_pointcloud.points[i].y;
+							point_src[2] = msg_pointcloud.points[i].z;
+							point_src[3] = 1;
+
+							gnd::matrix::prod( &mat_coordtf, &point_src, &point_dest );
+						} // <--- coordinate transform
+
+						// counting
+						gnd::lssmap::counting_map(&lssmap_counting, point_dest[0], point_dest[1]);
+
+						if( fp_txtlog ) {
+							fprintf( fp_txtlog, "%lf %lf\n", point_dest[0], point_dest[1] );
+						}
+
+					} // <--- scanning loop (point cloud data)
+
+					msg_pose_prevcollect = msg_pose;
+
+					seq_pose_at_map_update = msg_pose.header.seq;
+					seq_pointcloud_at_map_update = msg_pointcloud.header.seq;
+
+					time_pose_at_map_update = msg_pose.header.stamp.toSec();
+					time_pointcloud_at_map_update = msg_pointcloud.header.stamp.toSec();
+
+					cnt_collect++;
+
+				} // <--- coordinate transform and counting
+
+			} // <--- data collection
 
 			// ---> status display
-			if( node_config.status_display.value && time_current > time_display ) {
+			if( node_config.cycle_cui_status_display.value > 0 && time_current > time_display ) {
+				msg_pose_t ws;
 				// clear
 				if( nline_show ) {
 					fprintf(stderr, "\x1b[%02dA", nline_show);
@@ -345,17 +365,17 @@ int main(int argc, char **argv) {
 				nline_show++; fprintf(stderr, "\x1b[K operating time : %6.01lf[sec]\n", time_current - time_start);
 				nline_show++; fprintf(stderr, "\x1b[K           pose : topic name \"%s\"\n", node_config.topic_name_pose.value );
 				nline_show++; fprintf(stderr, "\x1b[K                :    latest seq %d\n", msg_pose.header.seq );
-				nline_show++; fprintf(stderr, "\x1b[K                : collected seq %d\n", seq_pose_atcollect );
+				nline_show++; fprintf(stderr, "\x1b[K                : collected seq %d\n", seq_pose_at_map_update );
 				nline_show++; fprintf(stderr, "\x1b[K    point-cloud : name \"%s\"\n", node_config.topic_name_pointcloud.value );
-				nline_show++; fprintf(stderr, "\x1b[K                : collected seq  %d\n", seq_pointcloud_atcollect );
+				nline_show++; fprintf(stderr, "\x1b[K                : collected seq  %d\n", seq_pointcloud_at_map_update );
 				nline_show++; fprintf(stderr, "\x1b[K                : size %d [laser points]\n", msg_pointcloud.points.size() );
+				nline_show++; fprintf(stderr, "\x1b[K data associate : stamp diff %7.04lf [sec] (pose - point-cloud)\n", time_pose_at_map_update - time_pointcloud_at_map_update );
 				nline_show++; fprintf(stderr, "\x1b[K  collect count : %d [scans]\n", cnt_collect );
 
-				time_display = gnd_loop_next(time_current, time_start, cycle_display);
+				time_display = gnd_loop_next(time_current, time_start, node_config.cycle_cui_status_display.value);
 			} // <--- status display
 
 		} // <--- main loop
-		spinner.stop();
 
 	} // <--- operate
 

@@ -128,10 +128,10 @@ namespace gnd {
 
 
 		// ---> debug condition
-		static const param_bool_t Default_status_display = {
-				"cui-status-display",
-				false,
-				"display the node status in terminal. [note] it need ansi color code"
+		static const param_double_t Default_cycle_status_display = {
+				"cycle-cui-status-display",
+				0,
+				"cycle to display the node status in standard output [msec]. [note] it need ansi color code. [note] if this value is less than or equal 0, don't display"
 		};
 
 		static const param_string_t Default_text_log = {
@@ -215,7 +215,7 @@ namespace gnd {
 			param_double_t collect_condition_moving_angle;		///< data collect condition (moving angle)
 			param_double_t collect_condition_time;				///< data collect condition (time)
 			// debug option
-			param_bool_t status_display;						///< cui status display mode
+			param_double_t cycle_cui_status_display;			///< cui status display mode
 			param_string_t text_log;							///< text log file name
 		};
 
@@ -257,7 +257,7 @@ namespace gnd {
 			memcpy( &p->collect_condition_moving_angle,			&Default_collect_condition_moving_angle,		sizeof(Default_collect_condition_moving_angle) );
 			memcpy( &p->collect_condition_time,					&Default_collect_condition_time,				sizeof(Default_collect_condition_time) );
 			// debug option
-			memcpy( &p->status_display,							&Default_status_display,						sizeof(Default_status_display) );
+			memcpy( &p->cycle_cui_status_display,				&Default_cycle_status_display,					sizeof(Default_cycle_status_display) );
 			memcpy( &p->text_log,								&Default_text_log,								sizeof(Default_text_log) );
 
 			return 0;
@@ -311,7 +311,7 @@ namespace gnd {
 			}
 			gnd::conf::get_parameter( src, &dest->collect_condition_time );
 			// debug option
-			gnd::conf::get_parameter( src, &dest->status_display );
+			gnd::conf::get_parameter( src, &dest->cycle_cui_status_display );
 			gnd::conf::get_parameter( src, &dest->text_log );
 
 			return 0;
@@ -370,7 +370,7 @@ namespace gnd {
 			}
 			gnd::conf::set_parameter( dest, &src->collect_condition_time );
 			// debug option
-			gnd::conf::set_parameter( dest, &src->status_display );
+			gnd::conf::set_parameter( dest, &src->cycle_cui_status_display );
 			gnd::conf::set_parameter( dest, &src->text_log );
 
 			return 0;

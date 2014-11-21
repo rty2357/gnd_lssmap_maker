@@ -9,12 +9,12 @@ project(gnd_lssmap_maker)
 # Catkin
 ##############################################################################
 
-find_package(catkin REQUIRED COMPONENTS roscpp sensor_msgs gnd_geometry2d_msgs gndlib gnd_rosutil )
+find_package(catkin REQUIRED COMPONENTS roscpp sensor_msgs gnd_msgs gndlib gnd_rosutil )
 
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES gnd_lssmap_maker
-  CATKIN_DEPENDS roscpp sensor_msgs gnd_geometry2d_msgs gndlib gnd_rosutil 
+  CATKIN_DEPENDS roscpp sensor_msgs gnd_msgs gndlib gnd_rosutil 
 )
 
 include_directories(include ${catkin_INCLUDE_DIRS})

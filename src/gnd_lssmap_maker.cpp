@@ -14,7 +14,7 @@
 #include "ros/Rate.h"
 
 #include "sensor_msgs/PointCloud.h"
-#include "gnd_geometry2d_msgs/msg_pose2d_stamped.h"
+#include "gnd_msgs/msg_pose2d_stamped.h"
 #include "gnd/gnd_rosmsg_reader.hpp"
 #include "gnd/gnd_rosutil.hpp"
 
@@ -30,7 +30,7 @@ typedef gnd::lssmap_maker::node_config							node_config_t;
 
 typedef sensor_msgs::PointCloud									msg_pointcloud_t;
 typedef gnd::rosutil::rosmsgs_reader_stamped<msg_pointcloud_t>	msgreader_pointcloud_t;
-typedef gnd_geometry2d_msgs::msg_pose2d_stamped					msg_pose_t;
+typedef gnd_msgs::msg_pose2d_stamped							msg_pose_t;
 typedef gnd::rosutil::rosmsgs_reader_stamped<msg_pose_t>		msgreader_pose_t;
 
 typedef gnd::lssmap::cmap_t										cmap_t;
@@ -194,7 +194,7 @@ int main(int argc, char **argv) {
 	// ---> operate
 	if ( ros::ok() ) {
 		ros::Rate loop_rate(1000);
-
+		ros::AsyncSpinner spinner(2);
 		msg_pose_t msg_pose_prevcollect;
 
 		double time_current;
@@ -226,10 +226,11 @@ int main(int argc, char **argv) {
 		} // ---> previous pose
 
 		// ---> main loop
+		spinner.start();
 		while( ros::ok() ) {
 			// blocking
 			loop_rate.sleep();
-			ros::spinOnce();
+
 
 			// time
 			time_current = ros::Time::now().toSec();
@@ -249,7 +250,7 @@ int main(int argc, char **argv) {
 				if( msgreader_pointcloud.nlatest() < 2 ) {
 					// exception: few data
 				}
-				else if( msgreader_pose.copy_at_time( &msg_pose, msg_pointcloud.header.stamp.toSec() ) == 0 ) { // get point cloud data
+				else if( msgreader_pose.copy_at_time( &msg_pose, &msg_pointcloud.header.stamp ) == 0 ) { // get point cloud data
 					double time = msg_pose.header.stamp.toSec() - msg_pose_prevcollect.header.stamp.toSec();
 					double sqdist = (msg_pose.x - msg_pose_prevcollect.x) * (msg_pose.x - msg_pose_prevcollect.x)
 																			+ (msg_pose.y - msg_pose_prevcollect.y) * (msg_pose.y - msg_pose_prevcollect.y);
@@ -265,6 +266,9 @@ int main(int argc, char **argv) {
 					flg_collect = flg_collect
 							|| (  node_config.collect_condition_moving_angle.value > 0
 									&& angle > node_config.collect_condition_moving_angle.value);
+					flg_collect = flg_collect
+							&& ( fabs(msg_pose.header.stamp.toSec() - msg_pointcloud.header.stamp.toSec()) < 0.1 );
+
 
 					// update sequence id of latest associated data
 					seq_pointcloud_associated = msg_pointcloud.header.seq;
@@ -349,8 +353,9 @@ int main(int argc, char **argv) {
 					cnt_collect++;
 
 				} // <--- coordinate transform and counting
-
 			} // <--- data collection
+
+
 
 			// ---> status display
 			if( node_config.cycle_cui_status_display.value > 0 && time_current > time_display ) {
@@ -376,7 +381,7 @@ int main(int argc, char **argv) {
 			} // <--- status display
 
 		} // <--- main loop
-
+		spinner.stop();
 	} // <--- operate
 
 

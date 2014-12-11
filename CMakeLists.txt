@@ -44,6 +44,7 @@ add_executable(gnd_lssmap_maker src/gnd_lssmap_maker.cpp)
 target_link_libraries(gnd_lssmap_maker ${catkin_LIBRARIES})
 install(TARGETS gnd_lssmap_maker 
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+add_dependencies(gnd_lssmap_maker sensor_msgs_generate_messages_cpp gnd_msgs_generate_messages_cpp)
 
 ##############################################################################
 # Test

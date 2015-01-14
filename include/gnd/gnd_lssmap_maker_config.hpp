@@ -60,6 +60,13 @@ namespace gnd {
 
 
 		// ---> map option
+		static const param_string_t Default_initial_counting_map = {
+				"initial-counting-map-directory",
+				"",
+				"directory that include counting map statistics files. this option is to merge sensor data that is obtained in other time"
+		};
+
+
 		static const param_double_t Default_counting_map_cell_size = {
 				"counting-map-cell-size",
 				gnd_cm2m(80),
@@ -203,6 +210,7 @@ namespace gnd {
 			param_string_t topic_name_pose;						///< pose topic name for ros communication
 			param_string_t topic_name_pointcloud;				///< pointcloud topic name for ros communication
 			// map make option
+			param_string_t initial_counting_map;				///< initial counting map
 			param_double_t counting_map_cell_size;				///< counting cell size
 			param_double_t image_map_pixel_size;				///< image map pixel size
 			param_double_t additional_smoothing_parameter;		///< additional smoothing parameter
@@ -246,6 +254,7 @@ namespace gnd {
 			memcpy( &p->topic_name_pose,						&Default_topic_name_pose,						sizeof(Default_topic_name_pose) );
 			memcpy( &p->topic_name_pointcloud,					&Default_topic_name_pointcloud,					sizeof(Default_topic_name_pointcloud) );
 			// map make option
+			memcpy( &p->initial_counting_map,					&Default_initial_counting_map,					sizeof(Default_initial_counting_map) );
 			memcpy( &p->counting_map_cell_size,					&Default_counting_map_cell_size,				sizeof(Default_counting_map_cell_size) );
 			memcpy( &p->image_map_pixel_size,					&Default_image_map_pixel_size,					sizeof(Default_image_map_pixel_size) );
 			memcpy( &p->additional_smoothing_parameter,			&Default_additional_smoothing_parameter,		sizeof(Default_additional_smoothing_parameter) );
@@ -297,6 +306,7 @@ namespace gnd {
 			gnd::conf::get_parameter( src, &dest->topic_name_pose );
 			gnd::conf::get_parameter( src, &dest->topic_name_pointcloud );
 			// map maker option
+			gnd::conf::get_parameter( src, &dest->initial_counting_map );
 			gnd::conf::get_parameter( src, &dest->counting_map_cell_size );
 			gnd::conf::get_parameter( src, &dest->image_map_pixel_size );
 			gnd::conf::get_parameter( src, &dest->additional_smoothing_parameter );
@@ -353,6 +363,7 @@ namespace gnd {
 			gnd::conf::set_parameter( dest, &src->topic_name_pose );
 			gnd::conf::set_parameter( dest, &src->topic_name_pointcloud );
 			// map maker option
+			gnd::conf::set_parameter( dest, &src->initial_counting_map );
 			gnd::conf::set_parameter( dest, &src->counting_map_cell_size );
 			gnd::conf::set_parameter( dest, &src->image_map_pixel_size );
 			gnd::conf::set_parameter( dest, &src->additional_smoothing_parameter );

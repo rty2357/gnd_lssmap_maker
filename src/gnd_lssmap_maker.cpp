@@ -157,19 +157,33 @@ int main(int argc, char **argv) {
 		} // <--- initialize point-cloud subscriber
 
 
+		// ---> initialize counting map
 		if ( ros::ok() ) {
 			fprintf(stdout, "\n");
 			fprintf(stdout, "   => initialize counting map\n" );
 
-			if( gnd::lssmap::init_counting_map(&lssmap_counting, node_config.counting_map_cell_size.value, node_config.counting_map_cell_size.value) < 0 ) {
-				ros::shutdown();
-				fprintf(stderr, "    ... error: fail to create map\n");
+			if( node_config.initial_counting_map.value[0] != '\0' ) {
+				// load counting map
+				if( read_counting_map(&lssmap_counting, node_config.initial_counting_map.value) < 0 ){
+					ros::shutdown();
+					fprintf(stderr, "    ... error: fail to load counting map in \"%s\"\n", node_config.initial_counting_map.value);
+				}
+				else {
+					fprintf(stderr, "    ... ok: load counting map in \"%s\"\n", node_config.initial_counting_map.value);
+				}
 			}
 			else {
-				fprintf(stderr, "    ... ok\n");
+				// initialize counting map
+				if( gnd::lssmap::init_counting_map(&lssmap_counting, node_config.counting_map_cell_size.value, node_config.counting_map_cell_size.value) < 0 ) {
+					ros::shutdown();
+					fprintf(stderr, "    ... error: fail to create map\n");
+				}
+				else {
+					fprintf(stderr, "    ... ok\n");
+				}
 			}
+		} // <--- initialize counting map
 
-		}
 
 
 		// ---> text log file create
@@ -237,13 +251,13 @@ int main(int argc, char **argv) {
 
 			// ---> read new pointcloud data
 			if( !gnd::rosutil::is_sequence_updated(seq_pointcloud_associated, msg_pointcloud.header.seq)	// point-cloud data had already been updated
-				&& msgreader_pointcloud.is_updated(msg_pointcloud.header.seq) ){							// no new data
+			&& msgreader_pointcloud.is_updated(msg_pointcloud.header.seq) ){							// no new data
 				msgreader_pointcloud.copy_next(&msg_pointcloud, msg_pointcloud.header.seq);
 			} // <--- read new pointcloud data
 
 			// ---> data collection
 			if( gnd::rosutil::is_sequence_updated(seq_pointcloud_associated, msg_pointcloud.header.seq)		// point-cloud data had not been updated
-				&& msgreader_pose.is_updated( &msg_pointcloud.header.stamp ) ) {							// pose data is delay and it's not able to associate on time-stamp
+			&& msgreader_pose.is_updated( &msg_pointcloud.header.stamp ) ) {							// pose data is delay and it's not able to associate on time-stamp
 				bool flg_collect = false;
 
 				// ---> associate point-cloud with pose and check data collect condition
@@ -253,7 +267,7 @@ int main(int argc, char **argv) {
 				else if( msgreader_pose.copy_at_time( &msg_pose, &msg_pointcloud.header.stamp ) == 0 ) { // get point cloud data
 					double time = msg_pose.header.stamp.toSec() - msg_pose_prevcollect.header.stamp.toSec();
 					double sqdist = (msg_pose.x - msg_pose_prevcollect.x) * (msg_pose.x - msg_pose_prevcollect.x)
-																			+ (msg_pose.y - msg_pose_prevcollect.y) * (msg_pose.y - msg_pose_prevcollect.y);
+																					+ (msg_pose.y - msg_pose_prevcollect.y) * (msg_pose.y - msg_pose_prevcollect.y);
 					double angle = fabs( gnd_rad_normalize( msg_pose.theta - msg_pose_prevcollect.theta ) );
 
 					// check data collect condition
@@ -300,7 +314,7 @@ int main(int argc, char **argv) {
 
 						{ // ---> ignore
 							sq_dist = ( msg_pointcloud.points[i].x) * ( msg_pointcloud.points[i].x)
-																					+ ( msg_pointcloud.points[i].y ) * ( msg_pointcloud.points[i].y );
+																							+ ( msg_pointcloud.points[i].y ) * ( msg_pointcloud.points[i].y );
 							if( node_config.collect_condition_ignore_range_lower.value >= 0 &&
 									sq_dist < node_config.collect_condition_ignore_range_lower.value * node_config.collect_condition_ignore_range_lower.value) {
 								continue;
@@ -314,7 +328,7 @@ int main(int argc, char **argv) {
 
 						{ // ---> culling
 							sq_dist = ( msg_pointcloud.points[i].x - x_src_prev ) * ( msg_pointcloud.points[i].x - x_src_prev )
-																					+ ( msg_pointcloud.points[i].y - y_src_prev ) * ( msg_pointcloud.points[i].y - y_src_prev );
+																							+ ( msg_pointcloud.points[i].y - y_src_prev ) * ( msg_pointcloud.points[i].y - y_src_prev );
 
 							if( sq_dist < node_config.collect_condition_culling_distance.value * node_config.collect_condition_culling_distance.value ) {
 								continue;
